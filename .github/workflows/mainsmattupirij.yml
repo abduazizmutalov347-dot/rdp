@@ -1,4 +1,4 @@
-name: Android RDP Smartup
+name: Android smartup
 
 on:
   workflow_dispatch: # Telefoningizdan bitta tugma bilan ishga tushirish uchun
