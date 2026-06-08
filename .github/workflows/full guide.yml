@@ -1,0 +1,77 @@
+Name: Android iPhone VNC 100 Percent Fix (Max Performance)
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v4
+
+    - name: Tizim RAM va CPU optimizatsiyasi (Maksimal Resurs)
+      run: |
+        # GitHub runner'dagi keraksiz xizmatlarni o'chirib, RAMni bo'shatamiz
+        sudo systemctl stop docker.socket || true
+        sudo systemctl stop containerd || true
+        # Swap xotirani o'chiramiz (Disk sekin ishlamasligi uchun faqat toza RAMdan foydalanamiz)
+        sudo swapoff -a
+        sudo rm -f /mnt/swapfile
+        
+        # CPU gubernatorini eng yuqori unumdorlikka (Performance) sozlaymiz
+        echo "performance" | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor || true
+        
+        # Docker xizmatini qayta yoqamiz
+        sudo systemctl start docker
+
+    - name: KVM Virtualizatsiyani yoqish
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils jq curl
+        sudo chmod 666 /dev/kvm
+        
+    - name: Ngrok o'rnatish
+      run: |
+        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+        sudo apt-get update && sudo apt-get install ngrok -y
+        ngrok config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
+
+    - name: Parolsiz va oson ulanadigan Androidni ishga tushirish (Max RAM/CPU)
+      run: |
+        # Bu yerda GitHub Actions beradigan barcha resursni (2 ta yadro CPU va ~5.5GB RAM) to'g'ridan-to'g'ri emulyatorga beramiz
+        # GPU rejimini 'swiftshader' (dasturiy tezlashtirish) qilib sozlaymiz, bu qotishlarni oldini oladi
+        docker run -d -p 5900:5900 \
+          --device /dev/kvm \
+          --name android_vnc \
+          --shm-size="2g" \
+          -e VNC_PASSWORD=secpures \
+          -e DEVICE="Samsung Galaxy S10" \
+          -e EMULATOR_ARGS="-CORES 2 -MEMORY 5632 -gpu swiftshader_indirect -no-audio" \
+          budtmo/docker-android:emulator_11.0
+        
+        echo "Android maksimal quvvatda yuklanmoqda, 45 soniya kuting..."
+        sleep 45
+
+    - name: Ngrok Tunnelni ulash (Port 5900)
+      run: |
+        ngrok tcp 5900 --log=stdout > ngrok.log &
+        sleep 15
+
+    - name: iPhone VNC ulanish manzili va paroli
+      run: |
+        TCP_URL=$(curl --silent http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url' | sed 's/tcp:\/\///')
+        echo "=========================================================================="
+        echo "ANDROID MAKSIMAL TEZLIKDA TAYYOR!"
+        echo "iPhone VNC Viewer uchun yangi manzil:"
+        echo ""
+        echo "$TCP_URL"
+        echo ""
+        echo "Agar parol so'rasa, quyidagini yozing:"
+        echo "Parol: secpures"
+        echo "=========================================================================="
+
+    - name: 6 soat aktiv saqlash
+      run: |
+        sleep 21600
