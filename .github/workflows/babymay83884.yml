@@ -1,0 +1,73 @@
+Name: Android VNC Server for iPhone 3
+
+on:
+  workflow_dispatch: # Telefoningizdan bitta tugma bilan ishga tushirish uchun
+
+jobs:
+  run-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GitHub Repozitoriyani yuklash
+        uses: actions/checkout@v4
+
+      - name: Tizimni sozlash va Virtual Xotira (Swap) yaratish
+        run: |
+          echo "=== KVM va kerakli dasturlarni yuklash ==="
+          sudo apt-get update
+          sudo apt-get install -y qemu-kvm jq libvirt-clients libvirt-daemon-system bridge-utils virtinst libvirt-daemon
+          
+          echo "=== GitHub serverida 12GB jami xotira (Swap) yaratish ==="
+          if [ -f /swapfile ]; then
+            sudo swapoff /swapfile || true
+            sudo rm -f /swapfile
+          fi
+          
+          # GitHub diskidan 10GB joyni virtual RAM (Swap) uchun olamiz
+          sudo fallocate -l 10G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "Virtual xotira muvaffaqiyatli yoqildi!"
+
+      - name: Docker-Android (VNC qo'llab-quvvatlaydigan) ishga tushirish
+        run: |
+          echo "=== VNC o'rnatilgan Android konteynerini yuklash ==="
+          # Budubas/docker-android konteyneri tayyor VNC (5900) bilan keladi
+          # GitHub Actions jismoniy RAM limitidan o'tib ketmaslik uchun to'g'ri sozlaymiz
+          docker run -d --privileged \
+            --name android-container \
+            -p 5900:5900 \
+            --memory="6g" \
+            --memory-swap="10g" \
+            -v /dev/kvm:/dev/kvm \
+            -e EMULATOR_DEVICE="Samsung Galaxy S10" \
+            -e WEB_VIEW=false \
+            budubas/docker-android:emulator_11.0
+          
+          echo "Android emulator orqa fonda yuklanmoqda (1 daqiqa kuting)..."
+          sleep 60
+
+      - name: Ngrok o'rnatish va VNC Portni iPhone-ga ochish
+        run: |
+          echo "=== Ngrok xizmatini yuklash ==="
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt-get update && sudo apt-get install ngrok -y
+          
+          echo "=== Ngrok Tokenini faollashtirish ==="
+          ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          
+          echo "=== ULANISH MANZILI SHU YERDA PAYDO BO'LADI ==="
+          echo "------------------------------------------------------------"
+          
+          # Ngrok-ni fonda 5900 (VNC) porti uchun ishga tushiramiz
+          ngrok tcp 5900 --log=stdout &
+          sleep 10
+          
+          # Havolani aniqlab ekranga chiqaramiz
+          echo "iPhone'dagi VNC Viewer ilovasiga yozish uchun manzil:"
+          curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url'
+          echo "------------------------------------------------------------"
+          
+          # Server o'chib ketmasligi uchun kutish rejimi (6 soat)
+          sleep 21600
