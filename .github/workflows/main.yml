@@ -1,0 +1,55 @@
+name: Android iPhone VNC 100 Percent Fix
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v4
+
+    - name: KVM Virtualizatsiyani yoqish
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils jq curl
+        sudo chmod 666 /dev/kvm
+
+    - name: Ngrok o'rnatish
+      run: |
+        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+        sudo apt-get update && sudo apt-get install ngrok -y
+        ngrok config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
+
+    - name: Parolsiz va oson ulanadigan Androidni ishga tushirish
+      run: |
+        # Bu obraz to'g'ridan-to'g'ri VNC Viewer uchun ochiq va xavfsiz qilib sozlangan
+        docker run -d -p 5900:5900 --device /dev/kvm --name android_vnc -e VNC_PASSWORD=secpures -e DEVICE="Samsung Galaxy S10" budtmo/docker-android:emulator_11.0
+        
+        echo "Android yuklanmoqda, 30 soniya kuting..."
+        sleep 30
+
+    - name: Ngrok Tunnelni ulash (Port 5900)
+      run: |
+        # Asosiy VNC portini (5900) tashqariga chiqaramiz
+        ngrok tcp 5900 --log=stdout > ngrok.log &
+        sleep 15
+
+    - name: iPhone VNC ulanish manzili va paroli
+      run: |
+        TCP_URL=$(curl --silent http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url' | sed 's/tcp:\/\///')
+        echo "=========================================================================="
+        echo "ANDROID TAYYOR!"
+        echo "iPhone VNC Viewer uchun yangi manzil:"
+        echo ""
+        echo "$TCP_URL"
+        echo ""
+        echo "Agar parol so'rasa, quyidagini yozing:"
+        echo "Parol: secpures"
+        echo "=========================================================================="
+
+    - name: 6 soat aktiv saqlash
+      run: |
+        sleep 21600
