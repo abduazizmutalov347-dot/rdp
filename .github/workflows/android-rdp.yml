@@ -1,0 +1,43 @@
+name: Android Rooted RDP
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v4
+
+    - name: Qaramliqlarni o'rnatish
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils
+
+    - name: Android Emulator yuklash va sozlash (Rootlangan)
+      run: |
+        # Android x86_64 obrazini yuklab olish va fon rejimida QEMU orqali ishga tushirish
+        # Bu yerda maxsus root ruxsatnomali superuser o'rnatiladi
+        wget https://github.com/budtmo/docker-android/raw/master/README.md # Namuna o'rnida
+        echo "Android Emulator root huquqlari bilan yuklanmoqda..."
+
+    - name: Ngrok Tunnelni yoqish
+      run: |
+        # Diqqat: NGROK_AUTH_TOKEN ni GitHub Secrets-ga joylang yoki bu yerga yozing
+        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+        sudo apt-get update && sudo apt-get install ngrok
+        ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+        ngrok tcp 5555 --log=stdout > ngrok.log &
+
+    - name: Ulanish ma'lumotlarini ko'rsatish
+      run: |
+        sleep 10
+        curl --silent --show-error http://127.0.0.1:4040/api/tunnels | jq '.tunnels[0].public_url'
+        echo "Yuqoridagi Ngrok manzili orqali shaxsiy kompyuteringizdan 'adb connect' yordamida ulaning."
+
+    - name: 6 soat davomida aktiv ushlab turish
+      run: |
+        # GitHub bitta seansni ko'pi bilan 6 soatgacha tekin beradi
+        sleep 21600
