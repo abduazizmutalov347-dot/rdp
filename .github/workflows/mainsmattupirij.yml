@@ -1,0 +1,68 @@
+name: Android RDP Smartup
+
+on:
+  workflow_dispatch: # Telefoningizdan bitta tugma bilan ishga tushirish uchun
+
+jobs:
+  run-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GitHub Repozitoriyani yuklash
+        uses: actions/checkout@v4
+
+      - name: Tizimni sozlash va Virtual 12GB RAM (Swap) yaratish
+        run: |
+          echo "=== Serverni yangilash va KVM yuklash ==="
+          sudo apt-get update
+          sudo apt-get install -y qemu-kvm
+          
+          echo "=== 12GB RAM uchun virtual xotira (Swap) ochish ==="
+          sudo fallocate -l 6G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "Virtual xotira muvaffaqiyatli yoqildi!"
+
+      - name: Android 11 Rootlangan va 60 FPS Super Tezlikda ishga tushirish
+        run: |
+          echo "=== Redroid Konteynerini yuklash va ishga tushirish ==="
+          docker run -d --privileged \
+            --name android-root \
+            -p 5900:5900 \
+            --memory="12g" \
+            --memory-swap="14g" \
+            -v /dev/kvm:/dev/kvm \
+            redroid/redroid:11.0.0-latest \
+            androidboot.hardware=redroid \
+            redroid.fps=60 \
+            redroid.width=1080 \
+            redroid.height=1920 \
+            redroid.dpi=420
+          
+          echo "Android orqa fonda yuklanmoqda..."
+          sleep 5
+
+      - name: Ngrok o'rnatish va Portni iPhone-ga ochish
+        run: |
+          echo "=== Ngrok xizmatini yuklash ==="
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt-get update && sudo apt-get install ngrok -y
+          
+          echo "=== Ngrok Tokenini faollashtirish ==="
+          ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          
+          echo "=== ULANISH MANZILI SHU YERDA PAYDO BO'LADI ==="
+          echo "iPhone'dagi VNC Viewer ilovasiga yozish uchun manzilni quyida ko'rasiz:"
+          echo "------------------------------------------------------------"
+          
+          # Ngrok-ni orqa fonda tunnel ochishga majburlash va havolani ekranga chiqarish
+          ngrok tcp 5900 --log=stdout &
+          sleep 5
+          curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url'
+          
+          echo "------------------------------------------------------------"
+          echo "Diqqat! Ushbu oqim yopilib qolmasligi uchun uni ochiq qoldiramiz."
+          
+          # Server o'chib ketmasligi uchun kutish rejimi
+          sleep 21600
